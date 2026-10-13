@@ -17,3 +17,17 @@ local.properties
 .kotlin/
 .idea/
 .workbuddy/
+
+# 签名私钥与敏感文件（绝不能提交）
+*.jks
+*.keystore
+*.p12
+*.pfx
+key.properties
+keystore.properties
+
+# Android Studio 图形界面签名生成的产物目录（含 mapping.txt，敏感）
+app/release/
+*.apk
+*.aab
+mapping.txt

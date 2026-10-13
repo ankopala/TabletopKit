@@ -22,10 +22,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -44,17 +47,22 @@ const val DOT_RADIUS_DP = 34
 /**
  * 起始玩家结果展示 + 动画。
  *
- * 动画流程：
- * 1. 被选中的圆点向外扩散出一个圆环，一直扩散到屏幕边缘之外。
- * 2. 圆环返回（回收）时，圆环「带过」的屏幕区域（圆环之外、直到屏幕边缘）
- *    被起始玩家的颜色铺满，圆环就是「纯色覆盖到哪」的前沿边界。
- * 3. 回收结束：圆点之外几乎全屏都是起始玩家颜色，其他玩家圆点被盖住，
- *    起始玩家圆点用白色描边高亮浮在最上层，最突出。
- * 4. 圆点保持悬浮呼吸效果。
+ * 核心模型：一个与 winner 圆点「同心」的**圆环**（环带，环宽固定）。
+ * 颜色随阶段切换：扩散 = winner 同色，回收 = 主题背景色。
  *
- * 实现：用 [Animatable] 驱动「圆环半径」（px）。
- * 扩散 baseR → 屏幕对角；回收 → 圆点外圈半径。
- * 回收阶段用 Path(even-odd) 画「大圆挖去小圆」的环形，填 winner 颜色。
+ * 核心原则：**遮罩由「圆环实际碰到」触发**，碰到才遮、没碰到不遮。
+ *
+ * 动画流程：
+ * 1. 扩散阶段（圆环 = winner 同色、半透明）：圆环向外扩散，扫过其他玩家圆点时，
+ *    把「碰到的部分」淡化（半透明环带盖住圆点重合部分，原色变淡，但不消失）。
+ * 2. 回收阶段（圆环 = 背景色）：winner 纯色从外向内铺（前沿 = 环带外半径）；
+ *    纯色扫过其他玩家圆点时，该圆点在纯色上 DstOut 挖出「圆点形状的洞」，
+ *    洞里露出背景色轮廓——透过纯色能「看见它们原来的位置」。
+ * 3. 圆环回收终点停在离 winner 圆点固定间隙（ringGap）处，不融为一体。
+ *
+ * 呼吸（**全程不停，贯穿扩散与回收**）：
+ * - 所有圆点（winner + 其他玩家）无条件随 breathScale 呼吸，与阶段无关。
+ * - 动画结束后（filled），圆环再与 winner 反向呼吸；动画中圆环半径由 ringOuter 独立驱动。
  */
 @Composable
 fun FirstPlayerScreen(
@@ -65,50 +73,52 @@ fun FirstPlayerScreen(
     onBack: () -> Unit,
 ) {
     val baseR = DOT_RADIUS_DP.dp
-    // 纯色环与圆点之间的间隙：回收时纯色环停在离圆点这个距离的位置，
-    // 必须大于呼吸动画的放大余量（34dp × 1.12 ≈ 38dp），才能始终留出清晰空白环。
-    val ringGap = 12.dp
-    val finalRingRadiusDp = baseR + ringGap
+    // 圆环本身的宽度（内外半径之差）
+    val ringWidth = 16.dp
+    // 回收终点：圆环外半径 = winner 圆点 + 固定间隙
+    val ringGap = 16.dp
+    val finalOuterRadiusDp = baseR + ringGap
 
-    // 提前把「回收终点半径」从 Dp 转成 px（LaunchedEffect 里不能调用 @Composable）
-    val finalRingRadiusPx = with(LocalDensity.current) { finalRingRadiusDp.toPx() }
+    val density = LocalDensity.current
+    val ringWidthPx = with(density) { ringWidth.toPx() }
+    val finalOuterRadiusPx = with(density) { finalOuterRadiusDp.toPx() }
 
-    // 屏幕对角长度（px），用来确定扩散的最大半径
+    // saveLayer 合成 paint
+    val layerPaint = remember { Paint() }
+
+    // 屏幕对角长度（px）
     var maxRadiusPx by remember { mutableFloatStateOf(0f) }
 
-    val ringRadius = remember { Animatable(0f) }
-    var breathing by remember { mutableStateOf(false) }
-    // 是否正处于「回收」阶段（扩散阶段不铺色，回收阶段才铺色）
+    // 圆环外半径（px），驱动扩散/回收
+    val ringOuter = remember { Animatable(0f) }
     var returning by remember { mutableStateOf(false) }
-    // 是否已铺满全屏（回收结束后持续保持填充色，不再消失）
     var filled by remember { mutableStateOf(false) }
 
-    LaunchedEffect(winner.id, maxRadiusPx, finalRingRadiusPx) {
+    val bgColor = MaterialTheme.colorScheme.background
+
+    LaunchedEffect(winner.id, maxRadiusPx, finalOuterRadiusPx) {
         if (maxRadiusPx <= 0f) return@LaunchedEffect
-        breathing = false
         returning = false
 
         if (settled) {
-            // 结果动画已播过（重新进入界面）：直接跳到最终态，不重播
-            ringRadius.snapTo(finalRingRadiusPx)
+            ringOuter.snapTo(finalOuterRadiusPx)
             filled = true
-            breathing = true
             return@LaunchedEffect
         }
 
         filled = false
-        ringRadius.snapTo(0f)
-        // 扩散：0 → 屏幕对角（冲出屏外）
-        ringRadius.animateTo(maxRadiusPx, tween(durationMillis = 1000, easing = ExpandEasing))
-        // 回收：屏幕对角 → 圆点外圈半径，此阶段铺色
+        ringOuter.snapTo(0f)
+        // 扩散：0 → 屏幕对角，圆环为 winner 同色半透明
+        ringOuter.animateTo(maxRadiusPx, tween(durationMillis = 1000, easing = ExpandEasing))
+        // 回收：屏幕对角 → 终点半径，圆环为背景色
         returning = true
-        ringRadius.animateTo(finalRingRadiusPx, tween(durationMillis = 900, easing = ReturnEasing))
+        ringOuter.animateTo(finalOuterRadiusPx, tween(durationMillis = 900, easing = ReturnEasing))
         returning = false
-        filled = true   // 回收结束，全屏铺色持续停留
-        breathing = true
-        onSettled()     // 通知 ViewModel：动画已播完，之后重进不再重播
+        filled = true
+        onSettled()
     }
 
+    // 呼吸：无限循环，全程不停
     val breathScale by rememberInfiniteTransition(label = "breath").animateFloat(
         initialValue = 1f,
         targetValue = 1.12f,
@@ -122,7 +132,7 @@ fun FirstPlayerScreen(
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(bgColor)
             .onSizeChanged { size ->
                 maxRadiusPx = hypot(size.width.toFloat(), size.height.toFloat())
             }
@@ -132,65 +142,131 @@ fun FirstPlayerScreen(
         val center = Offset(winner.x * w, winner.y * h)
         val baseRPx = baseR.toPx()
 
-        // 其它玩家淡化为低透明度（铺色后会被 winner 纯色盖住，只在铺色前显示）
-        if (!filled) {
-            others.forEach { p ->
-                drawCircle(
-                    color = p.color.copy(alpha = 0.3f),
-                    radius = baseRPx,
-                    center = Offset(p.x * w, p.y * h),
-                )
-            }
+        // winner 圆点：全程呼吸
+        val winnerR = baseRPx * breathScale
+
+        // 圆环外半径：
+        // - 动画阶段（扩散/回收）：由 ringOuter 独立驱动。
+        // - 结束阶段（filled）：与 winner 反向呼吸（winner 放大 → 环缩小）。
+        val outerR = if (filled) {
+            finalOuterRadiusPx * (2f - breathScale)
+        } else {
+            ringOuter.value
         }
 
-        // 1) 回收阶段：圆环之外直到屏幕边缘，铺满 winner 纯色（不透明）
-        //    用 Path even-odd 画「大圆 - 小圆」的环形填充。
-        if (returning) {
-            val filledPath = Path().apply {
+        // 其他玩家圆点半径：默认全程呼吸；但「被回收扫过的圆点」停止呼吸、定格基准大小。
+        // 判断「被扫过」：回收/铺满阶段，圆点中心到 winner 中心的距离 ≥ 当前纯色前沿（outerR）。
+        // 回收是单调的（outerR 递减），一旦满足即永久成立，故天然「扫过即停」。
+        fun otherRadius(p: Player): Float {
+            val dist = hypot(p.x * w - center.x, p.y * h - center.y)
+            val scanned = (returning || filled) && dist >= outerR
+            return if (scanned) baseRPx else baseRPx * breathScale
+        }
+
+        // 环带路径：大圆 - 内圆（even-odd）
+        fun ringPath(outer: Float): Path {
+            val r = outer.coerceAtLeast(0f)
+            val inner = (r - ringWidthPx).coerceAtLeast(0f)
+            return Path().apply {
                 fillType = PathFillType.EvenOdd
-                // 外圆：半径取 maxRadius，保证覆盖整个屏幕
-                addOval(Rect(center.x - maxRadiusPx, center.y - maxRadiusPx, center.x + maxRadiusPx, center.y + maxRadiusPx))
-                // 内圆：半径 = 当前圆环半径（挖空，露出圆点一侧的原始画面）
-                val r = ringRadius.value.coerceAtLeast(0f)
                 addOval(Rect(center.x - r, center.y - r, center.x + r, center.y + r))
+                if (inner > 0f) {
+                    addOval(Rect(center.x - inner, center.y - inner, center.x + inner, center.y + inner))
+                }
             }
-            drawPath(path = filledPath, color = winner.color)
         }
 
-        // 1.5) 回收结束后：全屏持续铺满 winner 纯色（不消失），盖住其他玩家圆点
-        if (filled) {
-            drawRect(
-                color = winner.color,
-                topLeft = Offset(0f, 0f),
-                size = androidx.compose.ui.geometry.Size(w, h),
-            )
+        // ── 图层 1 + 2：其他玩家圆点 + 遮罩（saveLayer 隔离）──
+        if (!filled) {
+            if (returning) {
+                // 回收阶段：先铺 winner 纯色（从环带外边缘到屏幕边缘），
+                // 再用其他玩家圆点 DstOut 挖洞，露出背景色轮廓（透过纯色看见原位置）。
+                drawIntoCanvas { canvas ->
+                    val saveCount = canvas.saveLayer(
+                        bounds = Rect(0f, 0f, w, h),
+                        paint = layerPaint,
+                    )
+                    val filledPath = Path().apply {
+                        fillType = PathFillType.EvenOdd
+                        addOval(
+                            Rect(
+                                center.x - maxRadiusPx,
+                                center.y - maxRadiusPx,
+                                center.x + maxRadiusPx,
+                                center.y + maxRadiusPx,
+                            )
+                        )
+                        val r = outerR.coerceAtLeast(0f)
+                        addOval(Rect(center.x - r, center.y - r, center.x + r, center.y + r))
+                    }
+                    drawPath(path = filledPath, color = winner.color)
+
+                    others.forEach { p ->
+                        drawCircle(
+                            color = Color.Black,
+                            radius = otherRadius(p),
+                            center = Offset(p.x * w, p.y * h),
+                            blendMode = BlendMode.DstOut,
+                        )
+                    }
+
+                    canvas.restore()
+                }
+                // 背景色环带：在纯色上抠出一圈背景色间隙
+                drawPath(path = ringPath(outerR), color = bgColor)
+            } else {
+                // 扩散阶段：其他玩家圆点（原色、呼吸）为「目标」，
+                // 用「实心圆」（半径 = 环带外半径）作为 DstOut 蒙版擦除——
+                // 圆环扫过的区域，圆点被永久挖掉（露出背景色），不再复活。
+                drawIntoCanvas { canvas ->
+                    val saveCount = canvas.saveLayer(
+                        bounds = Rect(0f, 0f, w, h),
+                        paint = layerPaint,
+                    )
+                    // 目标：其他玩家圆点（原色、全程呼吸）
+                    others.forEach { p ->
+                        drawCircle(
+                            color = p.color,
+                            radius = otherRadius(p),
+                            center = Offset(p.x * w, p.y * h),
+                        )
+                    }
+                    // 源：实心圆蒙版（半径 = 环带外半径），DstOut 擦除圆点
+                    val r = outerR.coerceAtLeast(0f)
+                    drawCircle(
+                        color = Color.Black,
+                        radius = r,
+                        center = center,
+                        blendMode = BlendMode.DstOut,
+                    )
+                    canvas.restore()
+                }
+                // 可见的扩散前沿：winner 同色环带，画在最上层，
+                // 让扩散过程「看得到」圆环在往外扩（扫过的圆点已被擦除露背景色）。
+                drawPath(path = ringPath(outerR), color = winner.color)
+            }
+        } else {
+            // 铺满阶段：全屏 winner 纯色 + 圆点挖洞（轮廓持续可见）+ 背景色环带
+            drawIntoCanvas { canvas ->
+                val saveCount = canvas.saveLayer(
+                    bounds = Rect(0f, 0f, w, h),
+                    paint = layerPaint,
+                )
+                drawRect(color = winner.color, topLeft = Offset.Zero, size = Size(w, h))
+                others.forEach { p ->
+                    drawCircle(
+                        color = Color.Black,
+                        radius = otherRadius(p),
+                        center = Offset(p.x * w, p.y * h),
+                        blendMode = BlendMode.DstOut,
+                    )
+                }
+                canvas.restore()
+            }
+            drawPath(path = ringPath(outerR), color = bgColor)
         }
 
-        // 2) 扩散阶段：纯圆环线（无填充）
-        if (!returning && !breathing && ringRadius.value > 0f) {
-            drawCircle(
-                color = winner.color,
-                radius = ringRadius.value,
-                center = center,
-                style = Stroke(width = 10.dp.toPx()),
-            )
-        }
-
-        // 3) 圆点自身（呼吸阶段半径随 breathScale 浮动）
-        val r = if (breathing) baseRPx * breathScale else baseRPx
-        drawCircle(color = winner.color, radius = r, center = center)
-
-        // 4) 高亮：圆点外圈一圈白色描边（铺色后与纯色背景形成对比，突出起始玩家）
-        //    仅在回收接近终点（圆环快收拢到圆点）或已结束时出现，避免回收一开始就提前冒出白环。
-        val highlightRadius = r + 6.dp.toPx()
-        val returnNearlyDone = returning && ringRadius.value < finalRingRadiusPx * 1.5f
-        if (breathing || returnNearlyDone || filled) {
-            drawCircle(
-                color = Color.White,
-                radius = highlightRadius,
-                center = center,
-                style = Stroke(width = 5.dp.toPx()),
-            )
-        }
+        // ── 图层 3：winner 圆点（全程呼吸）──────────────────
+        drawCircle(color = winner.color, radius = winnerR, center = center)
     }
 }
