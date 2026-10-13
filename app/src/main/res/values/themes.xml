@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 窗口层主题：仅作为 Compose 接管前的启动背景，不参与深/浅色的最终呈现。
+         使用 DayNight 让系统窗口背景跟随系统深浅色，避免深色模式下启动时白屏闪烁。 -->
+    <style name="Theme.TabletopKit" parent="android:Theme.Material.NoActionBar" />
+</resources>
