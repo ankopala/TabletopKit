@@ -18,6 +18,9 @@ local.properties
 .idea/
 .workbuddy/
 
+# 图标生成草稿（过程产物，非源码）
+generated-images/
+
 # 签名私钥与敏感文件（绝不能提交）
 *.jks
 *.keystore

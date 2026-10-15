@@ -15,6 +15,10 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 /** 倒计时秒数下限 */
 const val MIN_TIMEOUT_SECONDS = 0.5f
 
+/** 圆点半径允许范围（dp） */
+const val MIN_DOT_RADIUS_DP = 40f
+const val MAX_DOT_RADIUS_DP = 56f
+
 /**
  * 设置仓库：把 [AppSettings] 与 DataStore Preferences 之间做读写映射。
  */
@@ -26,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         // DataStore 会因类型不匹配抛 ClassCastException 导致闪退，故换新 key 名。
         val TIMEOUT_SECONDS = floatPreferencesKey("timeout_seconds_v2")
         val CONFIRMATION_MODE = stringPreferencesKey("confirmation_mode")
+        val DOT_RADIUS_DP = floatPreferencesKey("dot_radius_dp")
         val PALETTE_ID = stringPreferencesKey("palette_id")
     }
 
@@ -39,6 +44,8 @@ class SettingsRepository(private val context: Context) {
             confirmationMode = runCatching {
                 ConfirmationMode.valueOf(prefs[Keys.CONFIRMATION_MODE] ?: "AUTO_COUNTDOWN")
             }.getOrDefault(ConfirmationMode.AUTO_COUNTDOWN),
+            dotRadiusDp = (runCatching { prefs[Keys.DOT_RADIUS_DP] }.getOrNull() ?: 48f)
+                .coerceIn(MIN_DOT_RADIUS_DP, MAX_DOT_RADIUS_DP),
             paletteId = prefs[Keys.PALETTE_ID] ?: "default",
         )
     }
@@ -55,6 +62,12 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setConfirmationMode(mode: ConfirmationMode) {
         context.dataStore.edit { it[Keys.CONFIRMATION_MODE] = mode.name }
+    }
+
+    suspend fun setDotRadiusDp(dp: Float) {
+        context.dataStore.edit {
+            it[Keys.DOT_RADIUS_DP] = dp.coerceIn(MIN_DOT_RADIUS_DP, MAX_DOT_RADIUS_DP)
+        }
     }
 
     suspend fun setPaletteId(id: String) {

@@ -41,5 +41,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setConfirmationMode(mode: ConfirmationMode) = viewModelScope.launch { repo.setConfirmationMode(mode) }
 
+    fun setDotRadiusDp(dp: Float) = viewModelScope.launch { repo.setDotRadiusDp(dp) }
+
     fun setPaletteId(id: String) = viewModelScope.launch { repo.setPaletteId(id) }
 }

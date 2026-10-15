@@ -33,6 +33,12 @@ data class RegistrationUiState(
 const val DOT_NORM_RADIUS = 0.05f
 
 /**
+ * 报名「开始」所需的最少人数：少于 2 人时视为「未开始」，
+ * 不启动倒计时、手动模式也不允许结束（一个人无需决定起始/排序/分组）。
+ */
+const val MIN_PLAYERS = 2
+
+/**
  * 报名采集状态机（三个工具共用）。
  *
  * 核心机制：
@@ -117,6 +123,10 @@ open class RegistrationViewModel : ViewModel() {
     /** 取消指定 id 的圆点。 */
     private fun removePlayer(id: Long) {
         _uiState.update { it.copy(players = it.players.filterNot { p -> p.id == id }) }
+        // 撤回后若只剩 1 人（<2 人），倒计时重新暂停，回到「未开始」状态
+        if (_uiState.value.players.size < MIN_PLAYERS) {
+            cancelTimeout()
+        }
     }
 
     /** 命中检测：返回落点 [x]/[y] 命中的最近圆点，未命中返回 null。 */
@@ -138,6 +148,11 @@ open class RegistrationViewModel : ViewModel() {
     private fun usedColors() = _uiState.value.players.map { it.color }.toSet()
 
     private fun restartTimeout(seconds: Float) {
+        // 少于 2 人：不启动倒计时（一个人无需决定起始/排序/分组）
+        if (_uiState.value.players.size < MIN_PLAYERS) {
+            cancelTimeout()
+            return
+        }
         // 手动模式：不跑倒计时，等用户点「确认」按钮手动结束
         if (confirmationMode == ConfirmationMode.MANUAL) {
             timeoutJob?.cancel()
@@ -162,15 +177,22 @@ open class RegistrationViewModel : ViewModel() {
         }
     }
 
+    /** 取消倒计时并归零进度（用于 <2 人暂停 / 手动结束 / 重开）。 */
+    private fun cancelTimeout() {
+        timeoutJob?.cancel()
+        timeoutJob = null
+        _countdownProgress.value = 0f
+    }
+
     /**
      * 手动结束采集（手动模式下由「确认」按钮触发）。
      * 直接进入结果阶段，等价于倒计时超时。
      */
     fun finish() {
         if (_uiState.value.phase != RegistrationPhase.Collecting) return
-        timeoutJob?.cancel()
-        timeoutJob = null
-        _countdownProgress.value = 0f
+        // 少于 2 人：不允许结束（一个人无需分组/排序/选起始）
+        if (_uiState.value.players.size < MIN_PLAYERS) return
+        cancelTimeout()
         onTimeout()
     }
 
@@ -181,9 +203,8 @@ open class RegistrationViewModel : ViewModel() {
 
     /** 重开：清空并回到采集中 */
     open fun reset() {
-        timeoutJob?.cancel()
+        cancelTimeout()
         nextId = 0L
-        _countdownProgress.value = 0f
         _uiState.value = RegistrationUiState()
     }
 }

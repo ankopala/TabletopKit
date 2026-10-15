@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式启动背景：跟随 Material3 dark 默认 background -->
+    <color name="splash_background">#FF1C1B1F</color>
+</resources>

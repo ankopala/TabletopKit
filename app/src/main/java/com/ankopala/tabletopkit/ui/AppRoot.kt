@@ -2,6 +2,9 @@ package com.ankopala.tabletopkit.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ankopala.tabletopkit.ui.firstplayer.FirstPlayerScreen
@@ -12,7 +15,7 @@ import com.ankopala.tabletopkit.ui.playerorder.PlayerOrderScreen
 import com.ankopala.tabletopkit.ui.playerorder.PlayerOrderViewModel
 import com.ankopala.tabletopkit.ui.registration.RegistrationScreen
 import com.ankopala.tabletopkit.ui.settings.SettingsScreen
-import com.ankopala.tabletopkit.ui.teamsplitter.TeamCountInputScreen
+import com.ankopala.tabletopkit.ui.teamsplitter.TeamCountInput
 import com.ankopala.tabletopkit.ui.teamsplitter.TeamSplitterScreen
 import com.ankopala.tabletopkit.ui.teamsplitter.TeamSplitterViewModel
 import com.ankopala.tabletopkit.vm.MainViewModel
@@ -43,6 +46,7 @@ fun AppRoot(mainViewModel: MainViewModel) {
                 countdownProgress = countdown,
                 timeoutSeconds = settings.timeoutSeconds,
                 confirmationMode = settings.confirmationMode,
+                dotRadiusDp = settings.dotRadiusDp,
                 finishLabel = "开始选玩家",
                 onTap = vm::onTap,
                 onDragMove = vm::onDragMove,
@@ -56,6 +60,7 @@ fun AppRoot(mainViewModel: MainViewModel) {
                             winner = r.winner,
                             others = r.others,
                             settled = settled,
+                            dotRadiusDp = settings.dotRadiusDp,
                             onSettled = vm::markSettled,
                             onBack = {},
                         )
@@ -77,6 +82,7 @@ fun AppRoot(mainViewModel: MainViewModel) {
                 countdownProgress = countdown,
                 timeoutSeconds = settings.timeoutSeconds,
                 confirmationMode = settings.confirmationMode,
+                dotRadiusDp = settings.dotRadiusDp,
                 finishLabel = "开始排序",
                 onTap = vm::onTap,
                 onDragMove = vm::onDragMove,
@@ -85,7 +91,11 @@ fun AppRoot(mainViewModel: MainViewModel) {
                 onReset = vm::reset,
                 onBack = { mainViewModel.navigate(Screen.Home) },
                 resultContent = {
-                    PlayerOrderScreen(ordered = result, onBack = {})
+                    PlayerOrderScreen(
+                        ordered = result,
+                        dotRadiusDp = settings.dotRadiusDp,
+                        onBack = {},
+                    )
                 },
             )
         }
@@ -94,38 +104,51 @@ fun AppRoot(mainViewModel: MainViewModel) {
             val vm: TeamSplitterViewModel = viewModel()
             val uiState by vm.uiState.collectAsStateWithLifecycle()
             val countdown by vm.countdownProgress.collectAsStateWithLifecycle()
-            val teamCount by vm.teamCount.collectAsStateWithLifecycle()
+            val isLocked by vm.isLocked.collectAsStateWithLifecycle()
             val teams by vm.teams.collectAsStateWithLifecycle()
 
-            if (teamCount <= 0) {
-                // 报名前：先输入分成几队
-                TeamCountInputScreen(
-                    onConfirm = vm::setTeamCount,
-                    onBack = { mainViewModel.navigate(Screen.Home) },
-                )
-            } else {
-                vm.confirmationMode = settings.confirmationMode
+            // 队数输入（默认 2），首次点击屏幕注册时锁定
+            var teamCountInput by remember { mutableStateOf("2") }
 
-                RegistrationScreen(
-                    uiState = uiState,
-                    countdownProgress = countdown,
-                    timeoutSeconds = settings.timeoutSeconds,
-                    confirmationMode = settings.confirmationMode,
-                    finishLabel = "开始分组",
-                    onTap = vm::onTap,
-                    onDragMove = vm::onDragMove,
-                    onDragEnd = vm::onDragEnd,
-                    onFinish = vm::finish,
-                    onReset = vm::reset,
-                    onBack = { mainViewModel.navigate(Screen.Home) },
-                    resultContent = {
-                        TeamSplitterScreen(
-                            players = uiState.players,
-                            teams = teams,
+            vm.confirmationMode = settings.confirmationMode
+
+            RegistrationScreen(
+                uiState = uiState,
+                countdownProgress = countdown,
+                timeoutSeconds = settings.timeoutSeconds,
+                confirmationMode = settings.confirmationMode,
+                dotRadiusDp = settings.dotRadiusDp,
+                finishLabel = "开始分组",
+                onTap = { nx, ny, timeout ->
+                    // 首次点击：先锁定当前输入框的队数，再注册
+                    if (!isLocked) {
+                        vm.lockTeamCount(teamCountInput.toIntOrNull() ?: 2)
+                    }
+                    vm.onTap(nx, ny, timeout)
+                },
+                onDragMove = vm::onDragMove,
+                onDragEnd = vm::onDragEnd,
+                onFinish = vm::finish,
+                onReset = vm::reset,
+                onBack = { mainViewModel.navigate(Screen.Home) },
+                resultContent = {
+                    TeamSplitterScreen(
+                        players = uiState.players,
+                        teams = teams,
+                        dotRadiusDp = settings.dotRadiusDp,
+                    )
+                },
+                bottomContent = if (!isLocked) {
+                    {
+                        TeamCountInput(
+                            value = teamCountInput,
+                            onValueChange = { teamCountInput = it },
                         )
-                    },
-                )
-            }
+                    }
+                } else {
+                    null
+                },
+            )
         }
 
         Screen.Settings -> SettingsScreen(
@@ -133,6 +156,7 @@ fun AppRoot(mainViewModel: MainViewModel) {
             onSetThemeMode = mainViewModel::setThemeMode,
             onSetConfirmationMode = mainViewModel::setConfirmationMode,
             onSetTimeoutSeconds = mainViewModel::setTimeoutSeconds,
+            onSetDotRadiusDp = mainViewModel::setDotRadiusDp,
             onBack = { mainViewModel.navigate(Screen.Home) },
         )
     }

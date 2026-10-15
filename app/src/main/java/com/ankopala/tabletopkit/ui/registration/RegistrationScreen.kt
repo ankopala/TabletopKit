@@ -60,6 +60,7 @@ fun RegistrationScreen(
     countdownProgress: Float,
     timeoutSeconds: Float,
     confirmationMode: ConfirmationMode,
+    dotRadiusDp: Float,
     finishLabel: String,
     onTap: (normalizedX: Float, normalizedY: Float, timeoutSeconds: Float) -> Unit,
     onDragMove: (id: Long, normalizedX: Float, normalizedY: Float, timeoutSeconds: Float) -> Unit,
@@ -68,6 +69,7 @@ fun RegistrationScreen(
     onReset: () -> Unit,
     onBack: () -> Unit,
     resultContent: @Composable () -> Unit,
+    bottomContent: (@Composable () -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier
@@ -113,7 +115,7 @@ fun RegistrationScreen(
                                 if (hit != null) {
                                     longPress.consume()
                                     // 碰撞半径 = 最大呼吸半径（像素），保证两圆呼吸到最大也刚好相切
-                                    val bodyRadiusPx = 34.dp.toPx() * 1.09f
+                                    val bodyRadiusPx = dotRadiusDp.dp.toPx() * 1.09f
                                     drag(down.id) { change ->
                                         // 目标圆心（像素）= 手指位置
                                         val targetX = change.position.x
@@ -157,7 +159,7 @@ fun RegistrationScreen(
                     val scale = 1f + 0.09f * kotlin.math.sin(phase).toFloat()
                     drawCircle(
                         color = p.color,
-                        radius = 34.dp.toPx() * scale,
+                        radius = dotRadiusDp.dp.toPx() * scale,
                         center = Offset(p.x * size.width, p.y * size.height),
                     )
                 }
@@ -192,7 +194,7 @@ fun RegistrationScreen(
             }
         }
 
-        // 底部：自动模式 = 倒计时圈圈；手动模式 = 确认按钮
+        // 底部：自定义内容（如队伍分组的队数输入）优先；否则按模式显示倒计时圈圈/确认按钮
         if (collecting) {
             Column(
                 modifier = Modifier
@@ -200,9 +202,15 @@ fun RegistrationScreen(
                     .padding(bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (confirmationMode == ConfirmationMode.MANUAL) {
-                    // 手动模式：大按钮，点它结束报名
-                    Button(onClick = onFinish) {
+                if (bottomContent != null) {
+                    // 自定义底部内容（替代默认倒计时/按钮）
+                    bottomContent()
+                } else if (confirmationMode == ConfirmationMode.MANUAL) {
+                    // 手动模式：大按钮，点它结束报名；少于 2 人时置灰（一个人无需结束）
+                    Button(
+                        onClick = onFinish,
+                        enabled = uiState.players.size >= MIN_PLAYERS,
+                    ) {
                         Text(finishLabel)
                     }
                 } else {

@@ -1,12 +1,31 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// 从本地 keystore.properties 读取签名信息（该文件已被 .gitignore 忽略，不提交）
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
     namespace = "com.ankopala.tabletopkit"
     compileSdk {
         version = release(37)
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.containsKey("storeFile")) {
+                storeFile = rootProject.file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
     }
 
     defaultConfig {
@@ -21,10 +40,13 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
+            // 裁剪未使用的资源，进一步减小体积
+            isShrinkResources = true
         }
     }
     compileOptions {
@@ -40,7 +62,7 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)

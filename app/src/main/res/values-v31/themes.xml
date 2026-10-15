@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ (API 31)：系统强制 Splash Screen。
+         背景跟随主题(浅/深)，图标置空，达到「启动无图标画面」的效果。 -->
+    <style name="Theme.TabletopKit" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
+    </style>
+</resources>

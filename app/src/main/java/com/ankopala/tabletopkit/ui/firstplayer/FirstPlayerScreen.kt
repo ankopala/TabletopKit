@@ -41,9 +41,6 @@ private val ExpandEasing = CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)
 // 回收缓动：先快后慢（ease-out），无回弹。
 private val ReturnEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
-/** 圆点半径（报名/结果统一） */
-const val DOT_RADIUS_DP = 34
-
 /**
  * 起始玩家结果展示 + 动画。
  *
@@ -69,10 +66,11 @@ fun FirstPlayerScreen(
     winner: Player,
     others: List<Player>,
     settled: Boolean,
+    dotRadiusDp: Float,
     onSettled: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val baseR = DOT_RADIUS_DP.dp
+    val baseR = dotRadiusDp.dp
     // 圆环本身的宽度（内外半径之差）
     val ringWidth = 16.dp
     // 回收终点：圆环外半径 = winner 圆点 + 固定间隙

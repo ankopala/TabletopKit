@@ -20,6 +20,8 @@ data class AppSettings(
     val timeoutSeconds: Float = 2f,
     /** 玩家数量确定方式，默认自动倒计时 */
     val confirmationMode: ConfirmationMode = ConfirmationMode.AUTO_COUNTDOWN,
+    /** 圆点半径（dp），全 App 报名/结果统一，默认 48，范围 32~48 */
+    val dotRadiusDp: Float = 48f,
     /** 色板偏好（预留扩展，当前仅 "default" 默认色板） */
     val paletteId: String = "default",
 )

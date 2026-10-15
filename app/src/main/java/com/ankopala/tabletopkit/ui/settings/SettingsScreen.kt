@@ -22,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -34,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ankopala.tabletopkit.data.AppSettings
 import com.ankopala.tabletopkit.data.ConfirmationMode
+import com.ankopala.tabletopkit.data.MAX_DOT_RADIUS_DP
+import com.ankopala.tabletopkit.data.MIN_DOT_RADIUS_DP
 import com.ankopala.tabletopkit.data.ThemeMode
 
 /**
@@ -46,6 +49,7 @@ fun SettingsScreen(
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetConfirmationMode: (ConfirmationMode) -> Unit,
     onSetTimeoutSeconds: (Float) -> Unit,
+    onSetDotRadiusDp: (Float) -> Unit,
     onBack: () -> Unit,
 ) {
     var timeoutText by remember(settings.timeoutSeconds) {
@@ -147,6 +151,20 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            Spacer(Modifier.height(24.dp))
+            Text("圆点大小（${settings.dotRadiusDp.toInt()} dp）", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Slider(
+                value = settings.dotRadiusDp,
+                onValueChange = onSetDotRadiusDp,
+                valueRange = MIN_DOT_RADIUS_DP..MAX_DOT_RADIUS_DP,
+            )
+            Text(
+                text = "范围 ${MIN_DOT_RADIUS_DP.toInt()} ~ ${MAX_DOT_RADIUS_DP.toInt()} dp，默认 48 dp",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
